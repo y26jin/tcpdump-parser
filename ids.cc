@@ -68,9 +68,9 @@ int check_token(string token){
 }
 
 int main(){
-  string line;
+  string line, payload;
+  struct ARP_PACKET arp_pk;
   while(getline(cin, line)){
-    struct ARP_PACKET arp_pk;
     
     stringstream ss;
     ss << line;
@@ -81,19 +81,34 @@ int main(){
       // proceed payload
       string token;
 
-      if(CURRENT_PACKET == PACKET_ARP){
-	//	arp_pk.payload += token;
+      if(CURRENT_PACKET == PACKET_ARP && payload_left > 0){
 	while(!ss.eof()){
-	  ss >> token;
-	  arp_pk.payload += token;
+	  string tempstring;
+	  ss >> tempstring;
+	  token += tempstring;
 	}
-	ss.clear();
-
+	payload += token;
 	payload_left--;
 	if(payload_left == 0){
 	  // reset stuff for processing next packet
 	  CURRENT_PACKET = 0;
-	  arp_packet_list.push_back(arp_pk);
+	  arp_pk.payload = payload;
+	  struct ARP_PACKET temp_arp;
+	  temp_arp.interface = arp_pk.interface;
+	  temp_arp.interface_len = arp_pk.interface_len;
+	  temp_arp.ip_type = arp_pk.ip_type;
+	  temp_arp.ip_len = arp_pk.ip_len;
+	  temp_arp.packet_type = arp_pk.packet_type;
+	  temp_arp.from_ip = arp_pk.from_ip;
+	  temp_arp.action = arp_pk.action;
+	  temp_arp.to_ip = arp_pk.to_ip;
+	  temp_arp.payload_size = arp_pk.payload_size;
+	  temp_arp.payload = arp_pk.payload;
+
+	  cout<<"payload size = "<<temp_arp.payload.size()<<endl;
+	  cout<<"payload = "<<temp_arp.payload<<endl;
+	  arp_packet_list.push_back(temp_arp);
+
 	}
       }
       else if(CURRENT_PACKET == PACKET_IP){
@@ -102,13 +117,18 @@ int main(){
 
       continue;
     }
+    else if(check_token(first_token) == IPADDR){
+      // proceed the second line of IP packet
+      
+      continue;
+    }
 
     ss >> second_token;
     if(check_token(second_token) == PACKET_IP){
       /*
        * handle IP packet
        */
-
+      
       
     }
     else if(check_token(second_token) == PACKET_ARP){
