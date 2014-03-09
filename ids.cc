@@ -1,5 +1,6 @@
 #include <iostream>
 #include <sstream>
+#include <fstream>
 #include <string>
 #include <algorithm>
 #include <vector>
@@ -65,19 +66,10 @@ struct IP_PACKET {
   int id;
   int offset;
   string flags;
-  string proto;// protocol UDP/TCP/... etc
+  string proto;// protocol UDP/TCP/ICMP etc
   int length;
   // second line of IP packet
-  string from_ip; 
-  string to_ip;
-  // need to add more parameters 
-  int checksum; // good/bad checksum
-  string wrong_cksum; 
-  string right_cksum;
-  string errno; // 40414+ / 41305
-  DNS_record query; // microsoft.com, google.ca, etc
-  vector<DNS_record> routes; // DNS resolve path
-  string end_value; // I don't know what it is. Need to consult manpage
+  string second_line;
   string payload;
 };
 vector<IP_PACKET> ip_packet_list; // store captured IP packets
@@ -87,7 +79,7 @@ int check_token(string token){
   if(token.find("0x") != string::npos && token.size() == 7) return HEXXXD;
 
   int count1 = std::count(token.begin(), token.end(), '.');
-  if(count1 == 4) return IPADDR;
+  if(count1 == 4 || count1 == 3) return IPADDR;
   
   if(count1 == 1){
     int count2 = std::count(token.begin(), token.end(), ':');
@@ -98,6 +90,121 @@ int check_token(string token){
   if(token.compare("IP") == 0) return PACKET_IP;
   if(token.compare("ARP,") == 0) return PACKET_ARP;
 }
+
+/*
+ * Analyze if a given IP packet is an attack
+ */
+int check_malicious_host(string host){
+  ifstream domain_file("domains.txt");
+  
+  string line;
+  int err = 0;
+
+  while(getline(domain_file, line)){
+    string temp = line;
+    line.erase(line.size() - 1, string::npos);
+    if(line == host){
+      err = 1;
+      break;
+    }
+  }
+
+  domain_file.close();
+  return err;
+}
+
+void Analyze_IP(IP_PACKET ip_packet){
+  if(ip_packet.proto.find("TCP") != string::npos){
+    stringstream sst;
+    string token;
+    sst << ip_packet.second_line;
+    
+    // IP address check
+    string from_ip, to_ip;
+    sst >> from_ip;
+    sst >> token;
+    sst >> to_ip;
+    to_ip.erase(to_ip.size()-1, string::npos);
+    if(from_ip.compare(0,2,"10") != 0 && to_ip.compare(0,2,"10") != 0 ){
+      // Spoofed IP address
+      cout<<"[Spoofed IP address]: src:"<<from_ip<<", dst:"<<to_ip<<endl;
+      cout.flush();
+    }
+    else if(from_ip.compare(0,2,"10") != 0 && to_ip.compare(0,2,"10") == 0){
+      // unauthorized servers
+
+      cout<<"[Attempted server connection]: rem:"<<from_ip<<", srv:"<<to_ip<<endl;
+      cout.flush();
+
+      sst >> token;
+      sst >> token;
+      sst >> token;
+      sst >> token;
+      sst >> token;
+      sst >> token;
+      sst >> token;
+      sst >> token;
+      sst >> token;
+      token.erase(token.size()-1, string::npos);
+      int ack_value = atoi(token.c_str());
+      if(ack_value == 1){
+	cout<<"[Established server connection]: rem:"<<from_ip<<", srv:"<<to_ip<<endl;
+      }
+    }
+    
+  }
+  // UDP
+  else if(ip_packet.proto.find("UDP") != string::npos){
+    stringstream sst;
+    string token;
+    sst << ip_packet.second_line;
+
+    // UDP address check
+    string from_ip, to_ip;
+    sst >> from_ip;
+    sst >> token;
+    sst >> to_ip;
+    to_ip.erase(to_ip.size()-1, string::npos); 
+
+    if(from_ip.compare(0,2,"10") != 0 && to_ip.compare(0,2,"10") != 0 ){
+      // Spoofed IP address
+      cout<<"[Spoofed IP address]: src:"<<from_ip<<", dst:"<<to_ip<<endl;
+      cout.flush();
+    }
+    else if(from_ip.compare(0,2,"10") != 0 && to_ip.compare(0,2,"10") == 0){
+      /*
+       * Note: There is no such thing as ACK segment for UDP    
+       */
+    }
+    else if(from_ip.compare(0,2,"10") == 0 && to_ip.compare(0,2,"10") == 0){
+      // check if looking up to malicious hosts
+
+      sst >> token;
+      if(token.find("[udp") != string::npos){
+	// valid DNS lookup
+	sst >> token;
+	sst >> token;
+	sst >> token;
+	sst >> token;
+	sst >> token;
+	sst >> token;
+	token.erase(token.size()-1, string::npos);
+	// check if website is malicious
+	int err = check_malicious_host(token);
+	if(err == 1){
+	  cout<<"[Malicious name lookup]: src:"<<to_ip<<", host:"<<token<<endl;
+	}
+      }
+      
+    }
+
+  }
+  // ICMP
+  else if(ip_packet.proto.find("ICMP") != string::npos){
+
+  }
+}
+
 
 int main(){
   string line, payload;
@@ -148,6 +255,10 @@ int main(){
 	  cout<<"payload = "<<temp_arp.payload<<endl;
 	  arp_packet_list.push_back(temp_arp);
 
+	  /*
+	   * ARP packet analysis
+	   */
+
 	}
       }
       else if(CURRENT_PACKET == PACKET_IP && payload_left > 0){
@@ -172,119 +283,42 @@ int main(){
 	  temp_ip.flags = ip_pk.flags;
 	  temp_ip.proto = ip_pk.proto;
 	  temp_ip.length = ip_pk.length;
-	  temp_ip.from_ip = ip_pk.from_ip;
-	  temp_ip.to_ip = ip_pk.to_ip;
-	  temp_ip.checksum = ip_pk.checksum;
-	  temp_ip.wrong_cksum = ip_pk.wrong_cksum;
-	  temp_ip.right_cksum = ip_pk.right_cksum;
-	  temp_ip.errno = ip_pk.errno;
-	  temp_ip.query.second = ip_pk.query.second;
-	  temp_ip.query.type = ip_pk.query.type;
-	  temp_ip.query.ip = ip_pk.query.ip;
-	  temp_ip.query.target = ip_pk.query.target;
-	  temp_ip.routes = ip_pk.routes;
-	  temp_ip.end_value = ip_pk.end_value;
 	  temp_ip.payload = ip_pk.payload;
-	  
-	  ip_pk.routes.clear();
+	  temp_ip.second_line = ip_pk.second_line;
 
 	  cout<<"payload size = "<<temp_ip.payload.size()<<endl;
 	  cout<<"payload = "<<temp_ip.payload<<endl;
 	  ip_packet_list.push_back(temp_ip);
+	  ip_pk.payload.clear();
+
+	  /*
+	   * IP packet analysis
+	   */
+	  Analyze_IP(temp_ip);
 	}
       }
 
     }
     else if(check_token(first_token) == IPADDR){
       /*
-       * handle IP packet(Second half of the header)
+       * handle IP packet(Second half of the header) 
        */
 
-      string token;
-      ss >> token;
-      ss >> token;
-
-      ip_pk.from_ip = first_token; // from_ip
-      token.erase(token.size()-1, string::npos);
-      ip_pk.to_ip = token; // to_ip
-
-      ss >> token;
-      if(token.compare("[bad") == 0){
-	// process bad checksum
-	ip_pk.checksum = BAD_CHECKSUM;
-	ss >> token;
-	ss >> token;
-	ss >> token;
-	ip_pk.wrong_cksum = token;
-	ss >> token;
-	ss >> token;
-	token.erase(token.size() - 2, string::npos);
-	ip_pk.right_cksum = token;
-	ss >> token;
-	ip_pk.errno = token;
-
-	ip_pk.query.second = 0;
-	ss >> token;
-	ip_pk.query.type = token;
-	ss >> token;
-	ip_pk.query.target = token;
-
-	ss >> token;
-	ip_pk.end_value = token;
-
-      }
-      else if(token.compare("[udp") == 0){
-	// process good udp checksum
-	ip_pk.checksum = GOOD_CHECKSUM;
-
-	ss >> token;
-	ss >> token;
-	ss >> token;
-	ip_pk.errno = token;
-	ss >> token;
-	ss >> token;
-	ip_pk.query.second = 0;
-	ip_pk.query.type = token;
-	ss >> token;
-	ip_pk.query.target = token;
-
-	int pos, num1, num2, num3; // 2/0/0, 5/0/0
-	// need to figure out these numbers.
-	ss >> token;
-	string delimiter = "/";
-	pos = token.find("/");
-	num1 = atoi(token.substr(0,pos).c_str());
-	token.erase(0,pos+1);
-
-	pos = token.find("/");
-	num2 = atoi(token.substr(0,pos).c_str());
-	token.erase(0,pos+1);
-
-	pos = token.find("/");
-	num3 = atoi(token.substr(0,pos).c_str());
-	token.erase(0,pos+1);
-	ss >> token;
-
-	for(int i=0;i<num1;i++){
-	  ss >> token;
-	  token.erase(0,1);
-	  token.erase(token.size()-2, string::npos);
-	  dns_pk.second = atoi(token.c_str());
-	  ss >> token;
-	  dns_pk.type = token;
-	  ss >> token;
-	  dns_pk.ip = token;
-	  ss >> token;
-	  dns_pk.target = token;
-	  ip_pk.routes.push_back(dns_pk);
-	}
-
-	ss >> token;
-	ip_pk.end_value = token;
-
-	// need to compute # lines of payload
+      string second_line = first_token;
+      second_line += " ";
+      while(!ss.eof()){
+	string temps;
+	ss >> temps;
+	second_line += temps;
+	second_line += " ";
       }
 
+      cout<<second_line<<endl;
+      ip_pk.second_line = second_line;
+      
+      // need to compute # lines of payload
+      int num_payload_line = (ip_pk.length + 14)/16 + 1;
+      payload_left = num_payload_line;
 
     }
 
@@ -347,7 +381,6 @@ int main(){
       token.erase(token.size()-1, string::npos);
       ip_pk.length = atoi(token.c_str());
       
-
     }
     else if(check_token(second_token) == PACKET_ARP){
       /* 
