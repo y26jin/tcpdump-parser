@@ -139,8 +139,11 @@ double string_time_to_double(string time){
   return hour+minute+second;
 }
 
-map<string, string> ack_list, syn_list, rst_list, icmp_list;// elements are from/to unique address
+// Note: <key, value> = <src ip, target ip list>
+
+map< string, vector<string> > ack_list, syn_list, rst_list, icmp_list;// elements are from/to unique address
 string syn_start_time="start", syn_end_time;
+string ack_start_time="start", ack_end_time;
 void Analyze_IP(IP_PACKET ip_packet){
   if(ip_packet.proto.find("TCP") != string::npos){
     stringstream sst;
@@ -189,23 +192,31 @@ void Analyze_IP(IP_PACKET ip_packet){
       if(token.compare("[S],") == 0){
 	int dll = from_ip.find_last_of(".");
 	string fromaddr = from_ip.erase(dll, string::npos);
-	//	dll = to_ip.find_last_of(".");
-	//	string toaddr = to_ip.erase(dll, string::npos);
-	syn_list.insert( pair<string, string>(fromaddr, to_ip) );
-
-	if(syn_start_time=="start"){
-	  syn_start_time = ip_packet.time;
+	
+	if(syn_list.find(fromaddr) == syn_list.end()){
+	  // this src ip doesn't exist, insert it
+	  vector<string> temp;
+	  temp.push_back(to_ip);
+	  syn_list.insert( pair< string, vector<string> >(fromaddr, temp) );
 	}
-	else syn_end_time = ip_packet.time;
-
-	multimap<string, string>::iterator it;
-	for(it=syn_list.begin(); it!=syn_list.end(); it++){
-	  if(syn_list.count(it->first) == 10){
-	    
+	  else{
+	    // update its value if key exists
+	    map< string, vector<string> >::iterator ir;
+	    for(ir=syn_list.begin(); ir != syn_list.end(); ir++){
+	      if(ir->first == fromaddr){
+		vector<string> temp = ir->second;
+		temp.push_back(to_ip);
+		ir->second = temp;
+		break;
+	      }
+	    }
 	  }
-
-	}
-
+       
+	  // check if any entry has 10+ scans
+	  map< string, vector<string> >::iterator it;
+	  for(it=syn_list.begin(); it != syn_list.end(); it++){
+	    cout<<it->first<<" + "<<it->second.size()<<endl;
+	  }
       }
       else if(token.compare("[.],") == 0){
 
