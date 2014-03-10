@@ -192,6 +192,10 @@ void Analyze_IP(IP_PACKET ip_packet){
       if(token.compare("[S],") == 0){
 	int dll = from_ip.find_last_of(".");
 	string fromaddr = from_ip.erase(dll, string::npos);
+	if(syn_start_time == "start"){
+	  syn_start_time = ip_packet.time;
+	}
+	else syn_end_time = ip_packet.time;
 	
 	if(syn_list.find(fromaddr) == syn_list.end()){
 	  // this src ip doesn't exist, insert it
@@ -215,13 +219,70 @@ void Analyze_IP(IP_PACKET ip_packet){
 	  // check if any entry has 10+ scans
 	  map< string, vector<string> >::iterator it;
 	  for(it=syn_list.begin(); it != syn_list.end(); it++){
-	    cout<<it->first<<" + "<<it->second.size()<<endl;
+	    if(it->second.size() == 10 && string_time_to_double(syn_start_time) - string_time_to_double(syn_end_time) <= 2){
+	      cout<<"[Potential network scan]: att:"<<it->first<<endl;
+	    }
 	  }
       }
       else if(token.compare("[.],") == 0){
+	int dll = from_ip.find_last_of(".");
+        string fromaddr = from_ip.erase(dll, string::npos);
+        if(ack_start_time == "start"){
+          ack_start_time = ip_packet.time;
+        }
+        else ack_end_time = ip_packet.time;
+
+        if(ack_list.find(fromaddr) == ack_list.end()){
+          // this src ip doesn't exist, insert it
+          vector<string> temp;
+          temp.push_back(to_ip);
+          ack_list.insert( pair< string, vector<string> >(fromaddr, temp) );
+        }
+	else{
+	  // update its value if key exists
+	  map< string, vector<string> >::iterator ir;
+	  for(ir=ack_list.begin(); ir != ack_list.end(); ir++){
+	    if(ir->first == fromaddr){
+	      vector<string> temp = ir->second;
+	      temp.push_back(to_ip);
+	      ir->second = temp;
+	      break;
+	    }
+	  }
+	}
+
+	// check if any entry has 10+ scans
+	map< string, vector<string> >::iterator it;
+	for(it=ack_list.begin(); it != ack_list.end(); it++){
+	  if(it->second.size() == 10 && string_time_to_double(ack_start_time) - string_time_to_double(ack_end_time) <= 2){
+	    // Don't forget to check RST segment 
+	    if(rst_list.find(it->first) != rst_list.end())    cout<<"[Potential network scan]: att:"<<it->first<<endl;
+	  }
+	}
 
       }
       else if(token.compare("[R],") == 0){
+	int dll = from_ip.find_last_of(".");
+        string fromaddr = from_ip.erase(dll, string::npos);
+       
+        if(rst_list.find(fromaddr) == rst_list.end()){
+          // this src ip doesn't exist, insert it
+          vector<string> temp;
+          temp.push_back(to_ip);
+          rst_list.insert( pair< string, vector<string> >(fromaddr, temp) );
+        }
+	else{
+	  // update its value if key exists
+	  map< string, vector<string> >::iterator ir;
+	  for(ir=rst_list.begin(); ir != rst_list.end(); ir++){
+	    if(ir->first == fromaddr){
+	      vector<string> temp = ir->second;
+	      temp.push_back(to_ip);
+	      ir->second = temp;
+	      break;
+	    }
+	  }
+	}
 
       }
 
