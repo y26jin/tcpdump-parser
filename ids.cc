@@ -144,6 +144,7 @@ double string_time_to_double(string time){
 map< string, vector<string> > ack_list, syn_list, rst_list, icmp_list;// elements are from/to unique address
 string syn_start_time="start", syn_end_time;
 string ack_start_time="start", ack_end_time;
+string icmp_start_time="start", icmp_end_time;
 void Analyze_IP(IP_PACKET ip_packet){
   if(ip_packet.proto.find("TCP") != string::npos){
     stringstream sst;
@@ -219,7 +220,7 @@ void Analyze_IP(IP_PACKET ip_packet){
 	  // check if any entry has 10+ scans
 	  map< string, vector<string> >::iterator it;
 	  for(it=syn_list.begin(); it != syn_list.end(); it++){
-	    if(it->second.size() == 10 && string_time_to_double(syn_start_time) - string_time_to_double(syn_end_time) <= 2){
+	    if(it->second.size() == 10 && string_time_to_double(syn_end_time) - string_time_to_double(syn_start_time) <= 2){
 	      cout<<"[Potential network scan]: att:"<<it->first<<endl;
 	    }
 	  }
@@ -254,7 +255,7 @@ void Analyze_IP(IP_PACKET ip_packet){
 	// check if any entry has 10+ scans
 	map< string, vector<string> >::iterator it;
 	for(it=ack_list.begin(); it != ack_list.end(); it++){
-	  if(it->second.size() == 10 && string_time_to_double(ack_start_time) - string_time_to_double(ack_end_time) <= 2){
+	  if(it->second.size() == 10 && string_time_to_double(ack_end_time) - string_time_to_double(ack_start_time) <= 2){
 	    // Don't forget to check RST segment 
 	    if(rst_list.find(it->first) != rst_list.end())    cout<<"[Potential network scan]: att:"<<it->first<<endl;
 	  }
@@ -308,11 +309,6 @@ void Analyze_IP(IP_PACKET ip_packet){
       cout<<"[Spoofed IP address]: src:"<<from_ip<<", dst:"<<to_ip<<endl;
       cout.flush();
     }
-    else if(from_ip.compare(0,2,"10") != 0 && to_ip.compare(0,2,"10") == 0){
-      /*
-       * Note: There is no such thing as ACK segment for UDP    
-       */
-    }
     else if(from_ip.compare(0,2,"10") == 0 && to_ip.compare(0,2,"10") == 0){
       // check if looking up to malicious hosts
 
@@ -339,6 +335,43 @@ void Analyze_IP(IP_PACKET ip_packet){
   }
   // ICMP
   else if(ip_packet.proto.find("ICMP") != string::npos){
+    stringstream sst;
+    string token;
+    sst << ip_packet.second_line;
+
+    string from_ip, to_ip;
+    sst >> from_ip;
+    sst >> token;
+    sst >> to_ip;
+    to_ip.erase(to_ip.size()-1, string::npos);
+
+    if(icmp_start_time == "start"){
+      icmp_start_time = ip_packet.time;
+    }
+    else icmp_end_time = ip_packet.time;
+
+    if(icmp_list.find(from_ip) == icmp_list.end()){
+      vector<string> temp;
+      temp.push_back(to_ip);
+      icmp_list.insert( pair< string, vector<string> >(from_ip, temp) );
+    }
+    else{
+      map< string, vector<string> >::iterator ir;
+      for(ir=icmp_list.begin(); ir!=icmp_list.end(); ir++){
+	if(ir->first == from_ip){
+	  vector<string> temp = ir->second;
+	  temp.push_back(to_ip);
+	  ir->second = temp;
+	  break;
+	}
+      }
+    }
+
+      // check if any entry has 10+ scans
+      map< string, vector<string> >::iterator it;
+      for(it=icmp_list.begin(); it!=icmp_list.end(); it++){
+	if(it->second.size() == 10 && string_time_to_double(icmp_end_time) - string_time_to_double(icmp_start_time) <= 2) cout<<"[Potential network scan]: att:"<<it->first<<endl;
+      }
 
   }
 }
