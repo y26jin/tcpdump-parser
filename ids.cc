@@ -4,6 +4,7 @@
 #include <string>
 #include <algorithm>
 #include <vector>
+#include <map>
 
 using namespace std; 
 
@@ -138,7 +139,8 @@ double string_time_to_double(string time){
   return hour+minute+second;
 }
 
-vector<IP_PACKET> ack_list, syn_list, rst_list, icmp_list;// elements are from/to unique address
+map<string, string> ack_list, syn_list, rst_list, icmp_list;// elements are from/to unique address
+string syn_start_time="start", syn_end_time;
 void Analyze_IP(IP_PACKET ip_packet){
   if(ip_packet.proto.find("TCP") != string::npos){
     stringstream sst;
@@ -179,93 +181,37 @@ void Analyze_IP(IP_PACKET ip_packet){
       }
     }
     else if(from_ip.compare(0,2,"10") == 0 && to_ip.compare(0,2,"10") == 0){
-      // network scan: SYN, ACK
+      /*
+       * Network Scan: SYN, ACK
+       */
       sst >> token;
       sst >> token;
       if(token.compare("[S],") == 0){
-	// add it to syn_list
-	int unique = 0;
-	vector<IP_PACKET>::iterator it;
-	for(it = syn_list.begin(); it != syn_list.end(); it++){
-	  // go through list to make sure uniqueness
-	  string second_line = (*it).second_line, token;
-	  stringstream tempss;
-	  tempss << second_line;
-	  tempss >> token;
-	  tempss >> token;
-	  tempss >> token;
-	  token.erase(token.size()-1, string::npos);
+	int dll = from_ip.find_last_of(".");
+	string fromaddr = from_ip.erase(dll, string::npos);
+	//	dll = to_ip.find_last_of(".");
+	//	string toaddr = to_ip.erase(dll, string::npos);
+	syn_list.insert( pair<string, string>(fromaddr, to_ip) );
 
-	  if(token.compare(to_ip) != 0) unique++;
+	if(syn_start_time=="start"){
+	  syn_start_time = ip_packet.time;
 	}
-	if(unique == syn_list.size()) syn_list.push_back(ip_packet);
+	else syn_end_time = ip_packet.time;
 
-	if(syn_list.size() == 10){
-	  // validate time difference
-	  double min = 99999999, max = 0;
-	  vector<IP_PACKET>::iterator it = syn_list.begin();
-	  min = string_time_to_double((*it).time);
-	  it = syn_list.end();
-	  it--;
-	  max = string_time_to_double((*it).time);
-
-
-	  if(max - min <= 2){
-	    string attacker = from_ip;
-	    attacker.erase(attacker.size()-6, string::npos);
-	    cout<<"[Potential network scan]: att:"<<attacker<<endl;
+	multimap<string, string>::iterator it;
+	for(it=syn_list.begin(); it!=syn_list.end(); it++){
+	  if(syn_list.count(it->first) == 10){
+	    
 	  }
+
 	}
 
       }
       else if(token.compare("[.],") == 0){
-	int unique = 0;
-        vector<IP_PACKET>::iterator it;
-        for(it = ack_list.begin(); it != ack_list.end(); it++){
-          // go through list to make sure uniqueness
-          string second_line = (*it).second_line, token;
-          stringstream tempss;
-          tempss << second_line;
-          tempss >> token;
-          tempss >> token;
-          tempss >> token;
-          token.erase(token.size()-1, string::npos);
-
-          if(token.compare(to_ip) != 0) unique++;
-        }
-        if(unique == syn_list.size()) ack_list.push_back(ip_packet);
-
-	if(ack_list.size() == 10 && rst_list.size() == 1){
-	  // validate time difference
-	  double min = 99999999, max = 0;
-          vector<IP_PACKET>::iterator it=ack_list.begin();
-	  min = string_time_to_double((*it).time);
-	  it = ack_list.end();
-	  it--;
-	  max = string_time_to_double((*it).time);
-
-          if(max - min <= 2){
-            string attacker = from_ip;
-            attacker.erase(attacker.size()-6, string::npos);
-            cout<<"[Potential network scan]: att:"<<attacker<<endl;
-          }
-	}
 
       }
       else if(token.compare("[R],") == 0){
-	int validate = 0;
-	vector<IP_PACKET>::iterator it;
-	for(it=ack_list.begin(); it!=ack_list.end(); it++){
-	  string second_line = (*it).second_line, token;
-	  stringstream tempss;
-	  tempss << second_line;
-	  tempss >> token;
-	  tempss >> token;
-	  tempss >> token;
-	  token.erase(token.size()-1, string::npos);
-	  if(token.compare(to_ip) == 0) validate++;
-	}
-	if(validate != 0) rst_list.push_back(ip_packet);
+
       }
 
 
@@ -321,41 +267,7 @@ void Analyze_IP(IP_PACKET ip_packet){
   }
   // ICMP
   else if(ip_packet.proto.find("ICMP") != string::npos){
-    int unique = 0;
-    vector<IP_PACKET>::iterator it;
-    for(it = icmp_list.begin(); it != icmp_list.end(); it++){
-      // go through list to make sure uniqueness                                                                                                  
-      string second_line = (*it).second_line, token;
-      stringstream tempss;
-      tempss << second_line;
-      tempss >> token;
-      tempss >> token;
-      tempss >> token;
-      cout<<token<<endl;
-      token.erase(token.size()-1, string::npos);
 
-      if(token.compare(to_ip) != 0) unique++;
-    }
-    if(unique == icmp_list.size()) icmp_list.push_back(ip_packet);
-
-    if(icmp_list.size() == 10){
-      // validate time difference                                                                                                                 
-      double min = 99999999, max = 0;
-      vector<IP_PACKET>::iterator it = icmp_list.begin();
-      min = string_time_to_double((*it).time);
-      it = icmp_list.end();
-      it--;
-      max = string_time_to_double((*it).time);
-
-
-      if(max - min <= 2){
-	string from_ip, token;
-	
-	string attacker = from_ip;
-	attacker.erase(attacker.size()-6, string::npos);
-	cout<<"[Potential network scan]: att:"<<attacker<<endl;
-      }
-    }
   }
 }
 
@@ -382,11 +294,18 @@ int main(){
       string token;
 
       if(CURRENT_PACKET == PACKET_ARP && payload_left > 0){
-	while(!ss.eof()){
-	  string tempstring;
-	  ss >> tempstring;
-	  if(tempstring.find(".") == string::npos) token += tempstring;
-
+	if(payload_left > 1){
+	  string temptoken;
+	  for(int i = 0;i<8; i++){
+	    ss >> temptoken;
+	  }
+	  ss >> temptoken;
+	  token = temptoken;
+	}
+	else if(payload_left == 1){
+	  string temptoken;
+	  int last_line_token = ((arp_pk.payload_size + arp_pk.interface_len + arp_pk.ip_len + 4)/2)%8;
+	  cout<<last_line_token<<endl;
 	}
 	payload += token;
 	payload_left--;
@@ -408,9 +327,7 @@ int main(){
 	  temp_arp.to_ip = arp_pk.to_ip;
 	  temp_arp.payload_size = arp_pk.payload_size;
 	  temp_arp.payload = arp_pk.payload;
-
-	  cout<<"payload size = "<<temp_arp.payload.size()<<endl;
-	  cout<<"payload = "<<temp_arp.payload<<endl;
+	  // arp payload calculation is wrong
 	  arp_packet_list.push_back(temp_arp);
 
 	  /*
@@ -420,11 +337,22 @@ int main(){
 	}
       }
       else if(CURRENT_PACKET == PACKET_IP && payload_left > 0){
-	while(!ss.eof()){
-	  string tempstr;
-	  ss >> tempstr;
-	  if(tempstr.find(".") == string::npos) token += tempstr;
-	}
+	if(payload_left > 1){
+          string temptoken;
+          for(int i = 0;i<8; i++){
+            ss >> temptoken;
+          }
+          ss >> token;
+
+        }
+        else if(payload_left == 1){
+          string temptoken;
+          int last_line_token = ((ip_pk.length+14)/2)%8;
+	  for(int i = 0;i<last_line_token;i++){
+	    ss >> temptoken;
+	  }
+	  ss >> token;
+        }
 	payload += token;
 	payload_left--;
 
@@ -614,7 +542,7 @@ int main(){
       temp_ss >> arp_pk.payload_size;
 
       // determine number of lines of payload
-      int num_payload_line = (arp_pk.payload_size + arp_pk.interface_len + arp_pk.ip_len + 4)/16 + 1;
+      int num_payload_line = (arp_pk.payload_size + 14)/16 + 1;
       cout<<"line of payload = "<<num_payload_line<<endl;
       payload_left = num_payload_line; // count when processing payload line by line
 
