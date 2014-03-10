@@ -293,6 +293,26 @@ void Analyze_IP(IP_PACKET ip_packet){
 
 
     }
+    /*
+     * Examine payload for code red worm
+     */
+    string temp_payload = ip_packet.payload;
+    int last_dot = to_ip.find_last_of(".");
+    string port_s = to_ip.substr(last_dot+1, string::npos);
+    if(port_s == "80"){
+      // HTTP 
+      // Check payload for malicious code
+      int first_GET = temp_payload.find("GET");
+      int first_HTTP = temp_payload.find("HTTP");
+      if(first_GET < first_HTTP){
+	string temptoken = temp_payload.substr(first_GET, first_HTTP);
+
+	if(temptoken.find("/default.ida?") != string::npos && temptoken.find("%u") != string::npos){
+	  cout<<"[Code Red exploit]: src:"<<from_ip<<", dst:"<<to_ip<<endl;
+	  cout.flush();
+	}
+      }
+    }
     
   }
   // UDP
@@ -397,6 +417,7 @@ void Analyze_IP(IP_PACKET ip_packet){
 
     if(arp_list.size() == 10){
       cout<<"[Potential network scan]: att:"<<arp_packet.to_ip<<endl;
+      cout.flush();
     }
   }
 
@@ -468,7 +489,7 @@ int main(){
 	  /*
 	   * ARP packet analysis
 	   */
-
+	  Analyze_ARP(temp_arp);
 	}
       }
       else if(CURRENT_PACKET == PACKET_IP && payload_left > 0){
