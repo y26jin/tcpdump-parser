@@ -115,7 +115,30 @@ int check_malicious_host(string host){
   return err;
 }
 
-vector<IP_PACKET> ack_list, syn_list, rst_list;// elements are from/to unique address
+double string_time_to_double(string time){
+  // e.g. 17:41:55.234567
+
+  string shour = time.substr(0, 2);
+
+  string sminute = time.substr(3, 2);
+
+  string ssecond = time.substr(6, 2);
+
+  string smillsecond = time.substr(9, 6);
+
+  
+  double hour = (double)atoi(shour.c_str());
+  hour = hour * 3600;
+  double minute = (double)atoi(sminute.c_str());
+  minute = minute * 60;
+  double second = (double)atoi(ssecond.c_str());
+  double msec = (double)atoi(smillsecond.c_str());
+  second = second + msec / 1000000;
+
+  return hour+minute+second;
+}
+
+vector<IP_PACKET> ack_list, syn_list, rst_list, icmp_list;// elements are from/to unique address
 void Analyze_IP(IP_PACKET ip_packet){
   if(ip_packet.proto.find("TCP") != string::npos){
     stringstream sst;
@@ -179,7 +202,19 @@ void Analyze_IP(IP_PACKET ip_packet){
 
 	if(syn_list.size() == 10){
 	  // validate time difference
-	   
+	  double min = 99999999, max = 0;
+	  vector<IP_PACKET>::iterator it = syn_list.begin();
+	  min = string_time_to_double((*it).time);
+	  it = syn_list.end();
+	  it--;
+	  max = string_time_to_double((*it).time);
+
+
+	  if(max - min <= 2){
+	    string attacker = from_ip;
+	    attacker.erase(attacker.size()-6, string::npos);
+	    cout<<"[Potential network scan]: att:"<<attacker<<endl;
+	  }
 	}
 
       }
@@ -202,7 +237,18 @@ void Analyze_IP(IP_PACKET ip_packet){
 
 	if(ack_list.size() == 10 && rst_list.size() == 1){
 	  // validate time difference
+	  double min = 99999999, max = 0;
+          vector<IP_PACKET>::iterator it=ack_list.begin();
+	  min = string_time_to_double((*it).time);
+	  it = ack_list.end();
+	  it--;
+	  max = string_time_to_double((*it).time);
 
+          if(max - min <= 2){
+            string attacker = from_ip;
+            attacker.erase(attacker.size()-6, string::npos);
+            cout<<"[Potential network scan]: att:"<<attacker<<endl;
+          }
 	}
 
       }
@@ -275,7 +321,41 @@ void Analyze_IP(IP_PACKET ip_packet){
   }
   // ICMP
   else if(ip_packet.proto.find("ICMP") != string::npos){
+    int unique = 0;
+    vector<IP_PACKET>::iterator it;
+    for(it = icmp_list.begin(); it != icmp_list.end(); it++){
+      // go through list to make sure uniqueness                                                                                                  
+      string second_line = (*it).second_line, token;
+      stringstream tempss;
+      tempss << second_line;
+      tempss >> token;
+      tempss >> token;
+      tempss >> token;
+      cout<<token<<endl;
+      token.erase(token.size()-1, string::npos);
 
+      if(token.compare(to_ip) != 0) unique++;
+    }
+    if(unique == icmp_list.size()) icmp_list.push_back(ip_packet);
+
+    if(icmp_list.size() == 10){
+      // validate time difference                                                                                                                 
+      double min = 99999999, max = 0;
+      vector<IP_PACKET>::iterator it = icmp_list.begin();
+      min = string_time_to_double((*it).time);
+      it = icmp_list.end();
+      it--;
+      max = string_time_to_double((*it).time);
+
+
+      if(max - min <= 2){
+	string from_ip, token;
+	
+	string attacker = from_ip;
+	attacker.erase(attacker.size()-6, string::npos);
+	cout<<"[Potential network scan]: att:"<<attacker<<endl;
+      }
+    }
   }
 }
 
