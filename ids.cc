@@ -211,7 +211,8 @@ void Analyze_IP(IP_PACKET ip_packet){
 	    for(ir=syn_list.begin(); ir != syn_list.end(); ir++){
 	      if(ir->first == fromaddr){
 		vector<string> temp = ir->second;
-		temp.push_back(to_ip);
+		if(find(temp.begin(), temp.end(), to_ip) == temp.end())temp.push_back(to_ip);
+
 		ir->second = temp;
 		break;
 	      }
@@ -246,7 +247,8 @@ void Analyze_IP(IP_PACKET ip_packet){
 	  for(ir=ack_list.begin(); ir != ack_list.end(); ir++){
 	    if(ir->first == fromaddr){
 	      vector<string> temp = ir->second;
-	      temp.push_back(to_ip);
+	      if(find(temp.begin(), temp.end(), to_ip) == temp.end())temp.push_back(to_ip);
+
 	      ir->second = temp;
 	      break;
 	    }
@@ -279,7 +281,8 @@ void Analyze_IP(IP_PACKET ip_packet){
 	  for(ir=rst_list.begin(); ir != rst_list.end(); ir++){
 	    if(ir->first == fromaddr){
 	      vector<string> temp = ir->second;
-	      temp.push_back(to_ip);
+	      if(find(temp.begin(), temp.end(), to_ip) == temp.end()) temp.push_back(to_ip);
+
 	      ir->second = temp;
 	      break;
 	    }
@@ -361,7 +364,8 @@ void Analyze_IP(IP_PACKET ip_packet){
       for(ir=icmp_list.begin(); ir!=icmp_list.end(); ir++){
 	if(ir->first == from_ip){
 	  vector<string> temp = ir->second;
-	  temp.push_back(to_ip);
+	  if(find(temp.begin(), temp.end(), to_ip) == temp.end())	  temp.push_back(to_ip);
+
 	  ir->second = temp;
 	  break;
 	}
@@ -376,6 +380,25 @@ void Analyze_IP(IP_PACKET ip_packet){
 
   }
 }
+
+  /*
+   * Analyze ARP packet
+   */
+  vector<string> arp_list;
+  string arp_start_time="start", arp_end_time;
+
+  void Analyze_ARP(ARP_PACKET arp_packet){
+    if(arp_start_time == "start"){
+      arp_start_time = arp_packet.time;
+    }
+    else arp_end_time = arp_packet.time;
+
+    if(find(arp_list.begin(), arp_list.end(), arp_packet.from_ip) == arp_list.end()) arp_list.push_back(arp_packet.from_ip);
+
+    if(arp_list.size() == 10){
+      cout<<"[Potential network scan]: att:"<<arp_packet.to_ip<<endl;
+    }
+  }
 
 
 int main(){
