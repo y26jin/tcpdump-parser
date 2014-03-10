@@ -39,6 +39,7 @@ int payload_left = 0;
 #define REPLY 2
 
 struct ARP_PACKET {
+  string time;
   string interface; // eth0, ethernet, etc
   int interface_len;
   int ip_type; // ipv4 / ipv6
@@ -61,6 +62,7 @@ struct DNS_record {
   string target;
 };
 struct IP_PACKET {
+  string time;
   int tos;
   int ttl;
   int id;
@@ -113,6 +115,7 @@ int check_malicious_host(string host){
   return err;
 }
 
+vector<IP_PACKET> ack_list, syn_list, rst_list;// elements are from/to unique address
 void Analyze_IP(IP_PACKET ip_packet){
   if(ip_packet.proto.find("TCP") != string::npos){
     stringstream sst;
@@ -149,7 +152,77 @@ void Analyze_IP(IP_PACKET ip_packet){
       int ack_value = atoi(token.c_str());
       if(ack_value == 1){
 	cout<<"[Established server connection]: rem:"<<from_ip<<", srv:"<<to_ip<<endl;
+	cout.flush();
       }
+    }
+    else if(from_ip.compare(0,2,"10") == 0 && to_ip.compare(0,2,"10") == 0){
+      // network scan: SYN, ACK
+      sst >> token;
+      sst >> token;
+      if(token.compare("[S],") == 0){
+	// add it to syn_list
+	int unique = 0;
+	vector<IP_PACKET>::iterator it;
+	for(it = syn_list.begin(); it != syn_list.end(); it++){
+	  // go through list to make sure uniqueness
+	  string second_line = (*it).second_line, token;
+	  stringstream tempss;
+	  tempss << second_line;
+	  tempss >> token;
+	  tempss >> token;
+	  tempss >> token;
+	  token.erase(token.size()-1, string::npos);
+
+	  if(token.compare(to_ip) != 0) unique++;
+	}
+	if(unique == syn_list.size()) syn_list.push_back(ip_packet);
+
+	if(syn_list.size() == 10){
+	  // validate time difference
+	   
+	}
+
+      }
+      else if(token.compare("[.],") == 0){
+	int unique = 0;
+        vector<IP_PACKET>::iterator it;
+        for(it = ack_list.begin(); it != ack_list.end(); it++){
+          // go through list to make sure uniqueness
+          string second_line = (*it).second_line, token;
+          stringstream tempss;
+          tempss << second_line;
+          tempss >> token;
+          tempss >> token;
+          tempss >> token;
+          token.erase(token.size()-1, string::npos);
+
+          if(token.compare(to_ip) != 0) unique++;
+        }
+        if(unique == syn_list.size()) ack_list.push_back(ip_packet);
+
+	if(ack_list.size() == 10 && rst_list.size() == 1){
+	  // validate time difference
+
+	}
+
+      }
+      else if(token.compare("[R],") == 0){
+	int validate = 0;
+	vector<IP_PACKET>::iterator it;
+	for(it=ack_list.begin(); it!=ack_list.end(); it++){
+	  string second_line = (*it).second_line, token;
+	  stringstream tempss;
+	  tempss << second_line;
+	  tempss >> token;
+	  tempss >> token;
+	  tempss >> token;
+	  token.erase(token.size()-1, string::npos);
+	  if(token.compare(to_ip) == 0) validate++;
+	}
+	if(validate != 0) rst_list.push_back(ip_packet);
+      }
+
+
     }
     
   }
@@ -193,6 +266,7 @@ void Analyze_IP(IP_PACKET ip_packet){
 	int err = check_malicious_host(token);
 	if(err == 1){
 	  cout<<"[Malicious name lookup]: src:"<<to_ip<<", host:"<<token<<endl;
+	  cout.flush();
 	}
       }
       
@@ -217,9 +291,12 @@ int main(){
     
     stringstream ss;
     ss << line;
-    string first_token, second_token;
+    string first_token, second_token, time;
     ss >> first_token;
 
+    if(check_token(first_token) == TIME){
+      time = first_token;
+    }
     if(check_token(first_token) == HEXXXD){
       // proceed payload
       string token;
@@ -240,6 +317,7 @@ int main(){
 	  payload.clear();
 
 	  struct ARP_PACKET temp_arp;
+	  temp_arp.time = time;
 	  temp_arp.interface = arp_pk.interface;
 	  temp_arp.interface_len = arp_pk.interface_len;
 	  temp_arp.ip_type = arp_pk.ip_type;
@@ -276,6 +354,7 @@ int main(){
 	  payload.clear();
 
 	  struct IP_PACKET temp_ip;
+	  temp_ip.time = ip_pk.time;
 	  temp_ip.tos = ip_pk.tos;
 	  temp_ip.tos = ip_pk.ttl;
 	  temp_ip.id = ip_pk.id;
@@ -328,6 +407,8 @@ int main(){
        * handle IP packet(First half of the header)
        */
       cout<<"PACKET TYPE = IP"<<endl;
+      ip_pk.time = time; // update current packet received time
+
       CURRENT_PACKET = PACKET_IP;
       int temp_value;
 
