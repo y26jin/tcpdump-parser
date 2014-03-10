@@ -47,6 +47,7 @@ struct ARP_PACKET {
   int ip_len; // ipv4/ipv6 segment length
   int packet_type; // request / reply
   string from_ip; // IP addr from
+  string from_mac;
   string action; // tell / is-at
   string to_ip; // IP address
   int payload_size; // payload size
@@ -409,8 +410,11 @@ int main(){
 	}
 	else if(payload_left == 1){
 	  string temptoken;
-	  int last_line_token = ((arp_pk.payload_size + arp_pk.interface_len + arp_pk.ip_len + 4)/2)%8;
-	  cout<<last_line_token<<endl;
+	  int last_line_token = ((arp_pk.payload_size + 14)/2)%8;
+	  for(int i=0;i<last_line_token;i++){
+	    ss >> temptoken;
+	  }
+	  ss >> token;
 	}
 	payload += token;
 	payload_left--;
@@ -432,7 +436,10 @@ int main(){
 	  temp_arp.to_ip = arp_pk.to_ip;
 	  temp_arp.payload_size = arp_pk.payload_size;
 	  temp_arp.payload = arp_pk.payload;
-	  // arp payload calculation is wrong
+
+	  cout<<"payload size = "<<temp_arp.payload.size()<<endl;
+	  cout<<"payload = "<<temp_arp.payload<<endl;
+	  arp_pk.payload.clear();
 	  arp_packet_list.push_back(temp_arp);
 
 	  /*
@@ -630,10 +637,16 @@ int main(){
       // determine ip addr from
       ss >> token;
       arp_pk.from_ip = token; // ip addr from
-      
+
       // ip addr action
       ss >> token;
-      arp_pk.action = token; // action, e.g. is-at, tell, etc
+      if(token.find("tell") == string::npos){
+	arp_pk.from_mac = token;
+	ss >> token;
+      }
+      else {
+	arp_pk.action = token; // action, e.g. is-at, tell, etc
+      }
 
       // determine ip addr to
       ss >> token;
