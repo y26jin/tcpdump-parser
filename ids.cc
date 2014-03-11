@@ -5,6 +5,10 @@
 #include <algorithm>
 #include <vector>
 #include <map>
+#include <ctime>
+#include <cmath>
+#include <cstdlib>
+#include <cstdio>
 
 using namespace std; 
 
@@ -97,7 +101,9 @@ int check_token(string token){
 
 /*
  * Analyze if a given IP packet is an attack
+ * Also analyze if there's a cryptolocker
  */
+#define CRYPTOLOCKER 2
 int check_malicious_host(string host){
   ifstream domain_file("domains.txt");
   
@@ -114,7 +120,63 @@ int check_malicious_host(string host){
   }
 
   domain_file.close();
-  return err;
+  if(err == 1){
+    return err;
+  }
+  else if(err == 0){
+    // check if the domain is cryptolocker
+    
+    /*
+     * Generate all possible cryptolocker domain name
+     */
+
+    // get today's date
+    time_t theTime = time(NULL);
+    struct tm *aTime = localtime(&theTime);
+
+    int day = aTime->tm_mday;
+    int month = aTime->tm_mon + 1; // Month is 0 - 11, add 1 to get a jan-dec 1-12 concept
+    int year = aTime->tm_year + 1900; // Year is # years since 1900
+
+    int key = 0; // key can be correctly generated with time(NULL);
+
+    ofstream cryptolocker_domain("cryptolocker_domain.txt");
+    string tldlist[7] = { "com", "net", "biz", "ru", "org", "co.uk", "info" };
+
+    for(int i=0;i<1000;i++){
+      int newkey = (key+i)%1000;
+      // compute daykey, monthkey and yearkey
+      int daykey = (day<<0x10) ^ day;
+      if(daykey <= 1){
+	daykey = day << 0x18;
+      }
+      int monthkey = (month << 0x10) ^ month;
+      if(monthkey <= 7){
+	monthkey = month<<0x18;
+	if(monthkey<=7) monthkey = !(monthkey);
+      }
+      int yearkey = ((year+newkey)<<0x10) ^ (year+newkey);
+      if(yearkey <= 0xF) yearkey = ((year+newkey)<<0x18);
+      
+      int strlength = 
+	(((daykey ^ ((yearkey ^ 8 * yearkey ^ ((daykey ^ ((monthkey ^ 4 * monthkey) >> 6)) >> 8)) >> 5)) >> 6) & 3)+0xC;
+      
+      char *domain_name = (char*)malloc(strlength * sizeof(char));// domain name
+      
+      int index = 0;
+      do{
+	monthkey = ((monthkey ^ 4 * monthkey) >> 0x19) ^ 0x10 * (monthkey & 0xFFFFFFF8);
+	daykey = (daykey >> 0x13) ^ ((daykey >>6) ^ (daykey << 0xC)) & 0x1FFF ^ (daykey << 0xC);
+	yearkey = ((yearkey ^ 8 * yearkey) >> 0xB) ^ ((yearkey & 0xFFFFFFF0) << 0x11);
+	index = index + 1;
+	domain_name[index - 1] = (daykey ^ monthkey ^ yearkey) % 0x19 + 'a'; // year key is wrong
+      }while(index < strlength);
+      if(i==0) cout<<domain_name<<endl;
+
+    }
+
+  }
+
 }
 
 double string_time_to_double(string time){
@@ -352,6 +414,10 @@ void Analyze_IP(IP_PACKET ip_packet){
 	  cout<<"[Malicious name lookup]: src:"<<to_ip<<", host:"<<token<<endl;
 	  cout.flush();
 	}
+	if(err == CRYPTOLOCKER){
+	  cout<<"[CryptoLocker key request]: src:"<<to_ip<<endl;
+	  cout.flush();
+	}
       }
       
     }
@@ -481,8 +547,6 @@ int main(){
 	  temp_arp.payload_size = arp_pk.payload_size;
 	  temp_arp.payload = arp_pk.payload;
 
-	  cout<<"payload size = "<<temp_arp.payload.size()<<endl;
-	  cout<<"payload = "<<temp_arp.payload<<endl;
 	  arp_pk.payload.clear();
 	  arp_packet_list.push_back(temp_arp);
 
@@ -529,8 +593,8 @@ int main(){
 	  temp_ip.payload = ip_pk.payload;
 	  temp_ip.second_line = ip_pk.second_line;
 
-	  cout<<"payload size = "<<temp_ip.payload.size()<<endl;
-	  cout<<"payload = "<<temp_ip.payload<<endl;
+	  //	  cout<<"payload size = "<<temp_ip.payload.size()<<endl;
+	  //	  cout<<"payload = "<<temp_ip.payload<<endl;
 	  ip_packet_list.push_back(temp_ip);
 	  ip_pk.payload.clear();
 
@@ -556,7 +620,7 @@ int main(){
 	second_line += " ";
       }
 
-      cout<<second_line<<endl;
+      //      cout<<second_line<<endl;
       ip_pk.second_line = second_line;
       
       // need to compute # lines of payload
@@ -570,7 +634,7 @@ int main(){
       /*
        * handle IP packet(First half of the header)
        */
-      cout<<"PACKET TYPE = IP"<<endl;
+      //      cout<<"PACKET TYPE = IP"<<endl;
       ip_pk.time = time; // update current packet received time
 
       CURRENT_PACKET = PACKET_IP;
@@ -631,7 +695,7 @@ int main(){
       /* 
        * handle ARP packet
        */
-      cout<<"PACKET TYPE = ARP"<<endl;
+      //      cout<<"PACKET TYPE = ARP"<<endl;
       CURRENT_PACKET = PACKET_ARP;
 
       stringstream temp_ss; // for converting purposes
@@ -705,7 +769,7 @@ int main(){
 
       // determine number of lines of payload
       int num_payload_line = (arp_pk.payload_size + 14)/16 + 1;
-      cout<<"line of payload = "<<num_payload_line<<endl;
+      //      cout<<"line of payload = "<<num_payload_line<<endl;
       payload_left = num_payload_line; // count when processing payload line by line
 
     }
