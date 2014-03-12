@@ -134,47 +134,70 @@ int check_malicious_host(string host){
     time_t theTime = time(NULL);
     struct tm *aTime = localtime(&theTime);
 
-    int day = aTime->tm_mday;
-    int month = aTime->tm_mon + 1; // Month is 0 - 11, add 1 to get a jan-dec 1-12 concept
-    int year = aTime->tm_year + 1900; // Year is # years since 1900
+    unsigned int day = aTime->tm_mday;
+    unsigned int month = aTime->tm_mon + 1; // Month is 0 - 11, add 1 to get a jan-dec 1-12 concept
+    unsigned int year = aTime->tm_year + 1900; // Year is # years since 1900
 
-    int key = 0; // key can be correctly generated with time(NULL);
+    unsigned int key = 0; // key can be correctly generated with time(NULL);
 
     ofstream cryptolocker_domain("cryptolocker_domain.txt");
     string tldlist[7] = { "com", "net", "biz", "ru", "org", "co.uk", "info" };
 
+    int miss_count = 0;
     for(int i=0;i<1000;i++){
-      int newkey = (key+i)%1000;
+      unsigned int newkey = (key+i)%1000;
       // compute daykey, monthkey and yearkey
-      int daykey = (day<<0x10) ^ day;
+      unsigned int daykey = (day<<0x10) ^ day;
       if(daykey <= 1){
 	daykey = day << 0x18;
       }
-      int monthkey = (month << 0x10) ^ month;
+      unsigned int monthkey = (month << 0x10) ^ month;
       if(monthkey <= 7){
 	monthkey = month<<0x18;
 	if(monthkey<=7) monthkey = !(monthkey);
       }
-      int yearkey = ((year+newkey)<<0x10) ^ (year+newkey);
+      unsigned int yearkey = ((year+newkey)<<0x10) ^ (year+newkey);
       if(yearkey <= 0xF) yearkey = ((year+newkey)<<0x18);
       
-      int strlength = 
+      unsigned int strlength = 
 	(((daykey ^ ((yearkey ^ 8 * yearkey ^ ((daykey ^ ((monthkey ^ 4 * monthkey) >> 6)) >> 8)) >> 5)) >> 6) & 3)+0xC;
       
-      char *domain_name = (char*)malloc(strlength * sizeof(char));// domain name
-      
-      int index = 0;
+      //char *domain_name = (char*)malloc(strlength * sizeof(char));// domain name
+      string domain_name;
+
+      unsigned int index = 0;
       do{
 	monthkey = ((monthkey ^ 4 * monthkey) >> 0x19) ^ 0x10 * (monthkey & 0xFFFFFFF8);
 	daykey = (daykey >> 0x13) ^ ((daykey >>6) ^ (daykey << 0xC)) & 0x1FFF ^ (daykey << 0xC);
-	yearkey = ((yearkey ^ 8 * yearkey) >> 0xB) ^ ((yearkey & 0xFFFFFFF0) << 0x11);
+	yearkey = ((yearkey ^ (8 * yearkey)) >> 0xB) ^ ((yearkey & 0xFFFFFFF0) << 0x11);
 	index = index + 1;
-	domain_name[index - 1] = (daykey ^ monthkey ^ yearkey) % 0x19 + 'a'; // year key is wrong
+	//	domain_name[index - 1] = (daykey ^ monthkey ^ yearkey) % 0x19 + 'a'; // year key is wrong
+	char temp[1];
+        temp[0] = (daykey ^ monthkey ^ yearkey) % 0x19 + 'a';
+	temp[1] = '\0';
+	domain_name.append(temp);
       }while(index < strlength);
-      if(i==0) cout<<domain_name<<endl;
+
+      domain_name[strlength] = '\0';
+      string domain_s(domain_name);
+      domain_s.append(".");
+      domain_s.append(tldlist[newkey % 7]);
+
+      if(host == domain_s){
+	err = CRYPTOLOCKER;
+	break;
+      }
+      else if (host != domain_s){
+	miss_count++;
+      }
+      
+      cryptolocker_domain << domain_s ;
+      cryptolocker_domain << endl;
 
     }
 
+    cryptolocker_domain.close();
+    return err;
   }
 
 }
